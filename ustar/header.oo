@@ -1,0 +1,105 @@
+// # USTAR Header Parser and Path Traversal Guard
+//
+// Logline: Decodes 512-byte tar header blocks and enforces zero-trust path sanitization.
+//
+// Setup: Pure record parser. Defends against directory traversal (zip-slip) exploits.
+//
+// Beats:
+//   1. Parse numeric octal fields into standard integer sizes.
+//   2. Validate entry path safety, rejecting path escapes (../ and absolute roots).
+//   3. Decode USTAR header blocks into validated TarHeader models.
+
+pub type TarHeader = struct {
+    name: String,
+    size: Int,
+    typeflag: String,
+    is_dir: Bool,
+    is_safe: Bool,
+    is_valid: Bool
+};
+
+pub fn parse_octal(s: String) -> Int {
+    let trimmed: String = str_trim(s);
+    let n: Int = chars_len(trimmed);
+    let mut val: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        let b: Int = byte_at(trimmed, i);
+        if b >= 48 && b <= 55 {
+            val = (val * 8) + (b - 48);
+        } else {
+            return val;
+        }
+        i = i + 1;
+    }
+    return val;
+}
+
+pub fn is_path_safe(path: String) -> Bool {
+    let p: String = str_trim(path);
+    if chars_len(p) == 0 { return false; }
+    if str_starts_with(p, "/") || str_starts_with(p, "\\") { return false; }
+    if str_contains(p, "../") || str_contains(p, "..\\") || str_contains(p, "/..") || p == ".." {
+        return false;
+    }
+    return true;
+}
+
+pub fn sanitize_path(path: String) -> String {
+    let mut p: String = str_trim(path);
+    while str_starts_with(p, "/") {
+        p = str_slice(p, 1, chars_len(p));
+    }
+    return p;
+}
+
+pub fn parse_header_block(block: String) -> TarHeader {
+    let n: Int = chars_len(block);
+    if n < 512 {
+        return TarHeader { name: "", size: 0, typeflag: "", is_dir: false, is_safe: false, is_valid: false };
+    }
+
+    let mut is_all_zero: Bool = true;
+    let mut z: Int = 0;
+    while z < 512 {
+        if byte_at(block, z) != 0 {
+            is_all_zero = false;
+            break;
+        }
+        z = z + 1;
+    }
+    if is_all_zero {
+        return TarHeader { name: "", size: 0, typeflag: "", is_dir: false, is_safe: true, is_valid: false };
+    }
+
+    let raw_name: String = str_slice(block, 0, 100);
+    let mut name: String = "";
+    let mut ni: Int = 0;
+    while ni < 100 {
+        let b: Int = byte_at(raw_name, ni);
+        if b == 0 || b == 32 { break; }
+        name = name + char_at(raw_name, ni);
+        ni = ni + 1;
+    }
+
+    if chars_len(name) == 0 {
+        return TarHeader { name: "", size: 0, typeflag: "", is_dir: false, is_safe: true, is_valid: false };
+    }
+
+    let raw_size: String = str_slice(block, 124, 136);
+    let size_val: Int = parse_octal(raw_size);
+    let typeflag: String = char_at(block, 156);
+    let is_dir: Bool = (typeflag == "5") || str_ends_with(name, "/");
+    let safe: Bool = is_path_safe(name);
+
+
+
+    return TarHeader {
+        name: name,
+        size: size_val,
+        typeflag: typeflag,
+        is_dir: is_dir,
+        is_safe: safe,
+        is_valid: true
+    };
+}

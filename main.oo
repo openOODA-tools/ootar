@@ -1,0 +1,151 @@
+// # ootar Entry Point - Traversal-Resistant Archive Manager
+//
+// Logline: Argument gate, USTAR block processor, and zero-slip extraction manager.
+//
+// Setup: Requires FsReadCap and FsWriteCap. ProcessCap sets standard exit status.
+//
+// Beats:
+//   1. Handle --help, --version, and --mcp early without side effects.
+//   2. Read archive payloads and enforce zero-trust path sanitization.
+//   3. Dispatch to archive TOC listing, safe extraction, or archive creation.
+
+import "ustar/anchor.oo";
+import "render/anchor.oo";
+import "ipc/anchor.oo";
+
+fn read_all_stdin(fs: &FsReadCap) -> String {
+    let mut buf: String = "";
+    let mut running: Bool = true;
+    while running {
+        let chunk_res: Result[String, String] = oo_read_stdin_chunk(fs, 100);
+        if !chunk_res.is_ok() {
+            running = false;
+        } else {
+            let chunk: String = match chunk_res { Ok(s) => s, Err(_) => "" };
+            if chars_len(chunk) == 0 {
+                running = false;
+            } else {
+                buf = buf + chunk;
+            }
+        }
+    }
+    return buf;
+}
+
+fn render_help() -> String {
+    return "Usage: ootar [OPTIONS] [FILES...]\n\n" +
+        "Sovereign traversal-resistant archive manager (USTAR/tar).\n\n" +
+        "Options:\n" +
+        "  -t, --list             List the contents of an archive\n" +
+        "  -x, --extract          Extract files from an archive (safe from zip-slip)\n" +
+        "  -c, --create           Create a new archive from files\n" +
+        "  -f, --file=ARCHIVE     Use archive file (default stdin/stdout)\n" +
+        "  -C <dir>               Change to directory before extracting\n" +
+        "      --mcp              Start Model Context Protocol stdio server\n" +
+        "  -h, --help             Display this help message and exit\n" +
+        "  -v, --version          Print version information and exit\n";
+}
+
+pub fn main(
+    fs: &FsReadCap,
+    fs_write: &FsWriteCap,
+    proc_cap: &ProcessCap,
+    env: &EnvCap,
+    args: List[String]
+) -> Result[Int, String] {
+    let opts: TarOpts = parse_tar_args(args);
+
+    if opts.help_mode {
+        print(render_help());
+        return Ok(0);
+    }
+    if opts.version_mode {
+        println("ootar 0.1.0 (openOODA sovereign archive manager)");
+        return Ok(0);
+    }
+    if opts.mcp_mode {
+        run_mcp_server(fs);
+        return Ok(0);
+    }
+
+    if opts.create_mode {
+        let mut tar_body: String = "";
+        let n: Int = list_len(opts.files);
+        let mut i: Int = 0;
+        while i < n {
+            let file_name: String = list_get(opts.files, i);
+            let r: Result[String, String] = read_file(fs, file_name);
+            if r.is_ok() {
+                let content: String = match r { Ok(s) => s, Err(_) => "" };
+                let size: Int = chars_len(content);
+                tar_body = tar_body + create_file_header(file_name, size) + content;
+                let pad_rem: Int = size % 512;
+                if pad_rem > 0 {
+                    tar_body = tar_body + pad_spaces(512 - pad_rem);
+                }
+            }
+            i = i + 1;
+        }
+        tar_body = tar_body + spaces_512() + spaces_512();
+
+        if opts.archive_file != "" {
+            let wr: Result[Void, String] = write_file(fs_write, opts.archive_file, tar_body);
+            if wr.is_err() {
+                println("ootar: failed to write archive: " + opts.archive_file);
+                process_exit(2);
+                return Ok(2);
+            }
+        } else {
+            print(tar_body);
+        }
+        return Ok(0);
+    }
+
+    let mut archive_content: String = "";
+    if opts.archive_file != "" {
+        let r: Result[String, String] = read_file(fs, opts.archive_file);
+        if r.is_err() {
+            println("ootar: cannot open archive: " + opts.archive_file);
+            process_exit(2);
+            return Ok(2);
+        }
+        archive_content = match r { Ok(s) => s, Err(_) => "" };
+    } else {
+        archive_content = read_all_stdin(fs);
+    }
+
+    let entries: List[TarHeader] = read_tar_toc(archive_content);
+    let n_entries: Int = list_len(entries);
+
+    if opts.extract_mode {
+        let mut i: Int = 0;
+        while i < n_entries {
+            let h: TarHeader = list_get(entries, i);
+            if !h.is_safe {
+                println("ootar: SKIPPED unsafe path escape: " + h.name);
+            } else if !h.is_dir {
+                let file_data: String = get_entry_content(archive_content, h.name);
+                let target: String = if opts.target_dir == "." { sanitize_path(h.name) } else { opts.target_dir + "/" + sanitize_path(h.name) };
+                let wr: Result[Void, String] = write_file(fs_write, target, file_data);
+                if wr.is_err() {
+                    println("ootar: failed to extract file: " + target);
+                }
+            }
+            i = i + 1;
+        }
+        return Ok(0);
+    }
+
+    let mut j: Int = 0;
+    while j < n_entries {
+        let h: TarHeader = list_get(entries, j);
+        if !h.is_safe {
+            println("[UNSAFE ESCAPE BLOCKED] " + h.name);
+        } else {
+            println(style_tar_entry(h.name, h.is_dir));
+        }
+        j = j + 1;
+    }
+
+    return Ok(0);
+}

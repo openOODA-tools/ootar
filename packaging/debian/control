@@ -1,0 +1,15 @@
+Source: ootar
+Section: utils
+Priority: optional
+Maintainer: openOODA-tools <ops@openooda.org>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://github.com/openOODA-tools/ootar
+
+Package: ootar
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Traversal-resistant archive manager with zero zip-slip vulnerability
+ A traversal-resistant archive manager (USTAR/tar) written in pure openOODA, featuring
+ zero-trust path sanitization against zip-slip exploits, capability-gated safe extraction,
+ themed table of contents listing via oote palettes, and an MCP stdio surface.

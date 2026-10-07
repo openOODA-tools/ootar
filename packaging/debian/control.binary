@@ -1,0 +1,10 @@
+Package: ootar
+Version: 0.1.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Description: Traversal-resistant archive manager with zero zip-slip vulnerability
+ A traversal-resistant archive manager (USTAR/tar) written in pure openOODA, featuring
+ zero-trust path sanitization against zip-slip exploits, capability-gated safe extraction,
+ themed table of contents listing via oote palettes, and an MCP stdio surface.

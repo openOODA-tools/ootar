@@ -1,0 +1,74 @@
+// # Tar Options - Command Line Flags and Operational Configuration
+//
+// Logline: Decodes command line arguments into operational modes for ootar.
+//
+// Setup: Pure value type and parser. Zero ambient authority.
+//
+// Beats:
+//   1. Define TarOpts struct holding action mode, archive path, and target directory.
+//   2. Provide safe default initializer.
+//   3. Parse argument vector into validated TarOpts model.
+
+pub type TarOpts = struct {
+    list_mode: Bool,
+    extract_mode: Bool,
+    create_mode: Bool,
+    archive_file: String,
+    target_dir: String,
+    files: List[String],
+    mcp_mode: Bool,
+    help_mode: Bool,
+    version_mode: Bool,
+    error_msg: String
+};
+
+pub fn tar_opts_default() -> TarOpts {
+    return TarOpts {
+        list_mode: false,
+        extract_mode: false,
+        create_mode: false,
+        archive_file: "",
+        target_dir: ".",
+        files: list_new(),
+        mcp_mode: false,
+        help_mode: false,
+        version_mode: false,
+        error_msg: ""
+    };
+}
+
+pub fn parse_tar_args(args: List[String]) -> TarOpts {
+    let mut opts: TarOpts = tar_opts_default();
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+    while i < n {
+        let arg: String = list_get(args, i);
+        if arg == "-h" || arg == "--help" {
+            opts.help_mode = true;
+            return opts;
+        } else if arg == "-v" || arg == "--version" {
+            opts.version_mode = true;
+            return opts;
+        } else if arg == "--mcp" {
+            opts.mcp_mode = true;
+        } else if arg == "-t" || arg == "--list" {
+            opts.list_mode = true;
+        } else if arg == "-x" || arg == "--extract" {
+            opts.extract_mode = true;
+        } else if arg == "-c" || arg == "--create" {
+            opts.create_mode = true;
+        } else if arg == "-f" {
+            i = i + 1;
+            if i < n { opts.archive_file = list_get(args, i); }
+        } else if str_starts_with(arg, "-f=") {
+            opts.archive_file = str_slice(arg, 3, chars_len(arg));
+        } else if arg == "-C" {
+            i = i + 1;
+            if i < n { opts.target_dir = list_get(args, i); }
+        } else if !str_starts_with(arg, "-") {
+            opts.files = list_push(opts.files, arg);
+        }
+        i = i + 1;
+    }
+    return opts;
+}

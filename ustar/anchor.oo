@@ -1,0 +1,12 @@
+// # USTAR Subsystem Anchor
+//
+// Logline: Re-exports tar header parsing, traversal guards, and archive operations.
+//
+// Setup: Pure shim re-exporting ustar domain pages.
+//
+// Beats:
+//   1. Re-export tar header and zip-slip path validation.
+//   2. Re-export archive TOC scanning, extraction, and block creation.
+
+import "header.oo";
+import "archive.oo";

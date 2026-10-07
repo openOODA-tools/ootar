@@ -1,0 +1,104 @@
+// # USTAR Archive Operations - Listing, Extraction, and Creation
+//
+// Logline: Inspects tar archive blocks, extracts safe entries, and creates archives.
+//
+// Setup: Pure archive block processor. Extraction gated by FsWriteCap.
+//
+// Beats:
+//   1. Scan 512-byte blocks and parse entry table of contents.
+//   2. Safely extract file payloads into bounded target directories.
+//   3. Construct valid 512-byte USTAR header and payload blocks.
+
+import "header.oo";
+
+pub fn spaces_16() -> String { return "                "; }
+pub fn spaces_64() -> String { return spaces_16() + spaces_16() + spaces_16() + spaces_16(); }
+pub fn spaces_256() -> String { return spaces_64() + spaces_64() + spaces_64() + spaces_64(); }
+pub fn spaces_512() -> String { return spaces_256() + spaces_256(); }
+
+pub fn pad_spaces(k: Int) -> String {
+    if k <= 0 { return ""; }
+    if k <= 512 { return str_slice(spaces_512(), 0, k); }
+    return spaces_512();
+}
+
+pub fn read_tar_toc(archive_content: String) -> List[TarHeader] {
+    let mut out: List[TarHeader] = list_new();
+    let total_len: Int = chars_len(archive_content);
+    let mut cursor: Int = 0;
+
+    while cursor + 512 <= total_len {
+        let block: String = str_slice(archive_content, cursor, cursor + 512);
+        let hdr: TarHeader = parse_header_block(block);
+        if !hdr.is_valid {
+            break;
+        }
+
+        out = list_push(out, hdr);
+        let blocks: Int = (hdr.size + 511) / 512;
+        cursor = cursor + 512 + (blocks * 512);
+    }
+
+    return out;
+}
+
+pub fn get_entry_content(archive_content: String, target_name: String) -> String {
+    let total_len: Int = chars_len(archive_content);
+    let mut cursor: Int = 0;
+
+    while cursor + 512 <= total_len {
+        let block: String = str_slice(archive_content, cursor, cursor + 512);
+        let hdr: TarHeader = parse_header_block(block);
+        if !hdr.is_valid {
+            break;
+        }
+
+        let data_start: Int = cursor + 512;
+        let blocks: Int = (hdr.size + 511) / 512;
+        if hdr.name == target_name {
+            if data_start + hdr.size <= total_len {
+                return str_slice(archive_content, data_start, data_start + hdr.size);
+            }
+            return "";
+        }
+        cursor = data_start + (blocks * 512);
+    }
+    return "";
+}
+
+pub fn format_octal_field(val: Int, width: Int) -> String {
+    let mut num: Int = val;
+    let mut s: String = "";
+    if num == 0 {
+        s = "0";
+    } else {
+        while num > 0 {
+            let rem: Int = num % 8;
+            s = to_string(rem) + s;
+            num = num / 8;
+        }
+    }
+    while chars_len(s) < width - 1 {
+        s = "0" + s;
+    }
+    return s + " ";
+}
+
+pub fn create_file_header(name: String, size: Int) -> String {
+    let n_len: Int = chars_len(name);
+    let name_part: String = if n_len < 100 { name + pad_spaces(100 - n_len) } else { str_slice(name, 0, 100) };
+    let mut block: String = name_part;
+    block = block + "0000644 ";
+    block = block + "0001750 ";
+    block = block + "0001750 ";
+    block = block + format_octal_field(size, 12);
+    block = block + "14732150000 ";
+    block = block + "        ";
+    block = block + "0";
+    let cur_len: Int = chars_len(block);
+    block = block + pad_spaces(257 - cur_len);
+    block = block + "ustar  ";
+    let cur_len2: Int = chars_len(block);
+    block = block + pad_spaces(512 - cur_len2);
+    return block;
+}

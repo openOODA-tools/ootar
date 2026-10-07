@@ -1,0 +1,14 @@
+// # ootar Root Anchor
+//
+// Logline: Top-level re-export anchor connecting ustar, render, and ipc subsystems.
+//
+// Setup: Pure root shim uniting all modular subsystems for binary and test compilation.
+//
+// Beats:
+//   1. Re-export ustar archive anchor.
+//   2. Re-export render styling anchor.
+//   3. Re-export ipc communication anchor.
+
+import "ustar/anchor.oo";
+import "render/anchor.oo";
+import "ipc/anchor.oo";
